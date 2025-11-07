@@ -1,51 +1,68 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { use, useEffect, useState } from "react";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+export default function App() {
+  const [currencies, setCurrencies] = useState([]);
+  const [currency, setCurrency] = useState("USD");
+  const [amount, setAmount] = useState("");
+  const [balance, setBalance] = useState(0);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+  useEffect(() => {
+    (async () => {
+      const list = await invoke("get_supported_currencies");
+      setCurrencies(list);
+    })();
+  }, []);
+
+  async function deposit() {
+    const newBal = await invoke("deposit", {
+      amount: parseFloat(amount || "0"),
+      currency,
+    });
+    setBalance(newBal);
   }
 
+  async function withdraw() {
+    const newBal = await invoke("withdraw", {
+      amount: parseFloat(amount || "0"),
+      currency,
+    });
+    setBalance(newBal);
+  }
+
+  async function getBalance() {
+    const bal = await invoke("get_balance", { currency });
+    setBalance(bal);
+  }
+
+  useEffect(() => {
+    getBalance();
+  }, []);
+
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <div style={{ padding: "20px" }}>
+      <h1>🌍 Currency Wallet</h1>
+      <p>
+        Balance: {balance.toFixed(2)} {currency}
+      </p>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+      <input
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        placeholder="Amount"
+      />
+
+      <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+        {currencies.map((c) => (
+          <option key={c}>{c}</option>
+        ))}
+      </select>
+
+      <div style={{ marginTop: "10px" }}>
+        <button onClick={deposit}>Deposit</button>
+        <button onClick={withdraw}>Withdraw</button>
+        <button onClick={getBalance}>Check Balance</button>
       </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+    </div>
   );
 }
-
-export default App;
