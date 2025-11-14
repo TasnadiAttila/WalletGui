@@ -7,6 +7,6 @@ import "./App.css";
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <App />
-    <Toaster position="bottom-center" toastOptions={{ duration: 1000 }} />
+    <Toaster position="bottom-center" toastOptions={{ duration: 4000 }} />
   </React.StrictMode>
 );

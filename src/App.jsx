@@ -2,9 +2,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
+const CHECK_BALANCE_TOAST_ID = "check-balance";
+
 export default function App() {
   const [currencies, setCurrencies] = useState([]);
   const [currency, setCurrency] = useState("USD");
+  const [viewCurrency, setViewCurrency] = useState("USD");
   const [amount, setAmount] = useState("");
   const [balance, setBalance] = useState(0);
 
@@ -54,6 +57,18 @@ export default function App() {
     }
   }
 
+  async function checkBalanceToast() {
+    try {
+      toast.loading("Checking balance…", { id: CHECK_BALANCE_TOAST_ID });
+      const bal = await invoke("get_balance", { currency: viewCurrency });
+      toast.success(`Balance: ${Number(bal).toFixed(2)} ${viewCurrency}`, {
+        id: CHECK_BALANCE_TOAST_ID,
+      });
+    } catch (error) {
+      toast.error(`Failed to get balance: ${error}`);
+    }
+  }
+
   useEffect(() => {
     getBalance();
   }, [currency]);
@@ -87,7 +102,16 @@ export default function App() {
       </div>
 
       <div className="row">
-        <button onClick={getBalance}>Check Balance</button>
+        <select
+          value={viewCurrency}
+          onChange={(e) => setViewCurrency(e.target.value)}
+          aria-label="Display currency"
+        >
+          {currencies.map((c) => (
+            <option key={c}>{c}</option>
+          ))}
+        </select>
+        <button onClick={checkBalanceToast}>Check Balance</button>
       </div>
     </div>
   );
