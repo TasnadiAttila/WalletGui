@@ -44,6 +44,7 @@
 }
 
 input,
+select,
 button {
   border-radius: 8px;
   border: 1px solid transparent;
@@ -61,7 +62,9 @@ button:hover {
 button:focus,
 button:focus-visible,
 input:focus,
-input:focus-visible {
+input:focus-visible,
+select:focus,
+select:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
@@ -109,6 +112,7 @@ h1 {
 }
 
 input,
+select,
 button {
   border-radius: 8px;
   border: 1px solid transparent;
@@ -135,6 +139,7 @@ button:active {
 }
 
 input,
+select,
 button {
   outline: none;
 }
@@ -154,6 +159,7 @@ button {
   }
 
   input,
+  select,
   button {
     color: #ffffff;
     background-color: #0f0f0f98;
@@ -161,4 +167,135 @@ button {
   button:active {
     background-color: #0f0f0f69;
   }
+}
+
+/* Modern layout additions */
+.app-header {
+  max-width: 960px;
+  margin: 0 auto 1rem;
+}
+.app-header h1 {
+  margin: 0 0 0.25rem;
+}
+.app-header .sub {
+  color: #b6b6b6;
+  font-size: 0.95rem;
+}
+
+.grid {
+  max-width: 960px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  text-align: left;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+.card h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+.controls {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+.swap-btn {
+  width: 2.25rem;
+  height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #f6f6f6;
+  cursor: pointer;
+}
+.swap-btn:hover {
+  filter: brightness(1.1);
+}
+
+/* Ensure converter inputs/selects/buttons align perfectly */
+.converter-controls input,
+.converter-controls select,
+.converter-controls button {
+  height: 2.5rem;
+  box-sizing: border-box;
+}
+.converter-controls input,
+.converter-controls select {
+  padding: 0 0.75rem;
+}
+.converter-controls .swap-btn {
+  width: 2.5rem;
+  padding: 0;
+}
+
+/* Keep the from → to controls next to each other */
+.converter-controls .pair {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+}
+.converter-controls .pair select {
+  min-width: 110px;
+}
+
+/* Currency suffix inside inputs (Account card) */
+.input-currency {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.input-currency input {
+  padding-right: 4.5rem; /* space for the currency suffix */
+}
+.input-currency .suffix {
+  position: absolute;
+  right: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.9rem;
+  color: #b6b6b6;
+  pointer-events: none;
+}
+.balance-pill {
+  display: inline-block;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(100, 108, 255, 0.15);
+  border: 1px solid rgba(100, 108, 255, 0.35);
+  font-weight: 600;
+}
+.muted {
+  color: #b6b6b6;
+}
+
+button.primary {
+  background: #2f2fff;
+  color: #fff;
+  border-color: transparent;
+}
+button.primary:hover {
+  filter: brightness(1.05);
+}
+button.ghost {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #f6f6f6;
 }

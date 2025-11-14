@@ -2,7 +2,7 @@ mod model;
 mod api;
 
 use model::{Account, SharedAccount, Currency};
-use api::{convert_currency, apply_transaction};
+use api::{convert_currency, apply_transaction, convert_to_usd};
 use std::sync::{Arc, Mutex};
 use tauri::State;
 
@@ -13,9 +13,9 @@ struct AppState {
 #[tauri::command]
 async fn deposit(state: State<'_, AppState>, amount: f64, currency: String) -> Result<f64, String> {
     let curr = Currency::try_from(currency.as_str())?;
-    let usd = Currency::try_from("USD")?;
 
-    let usd_amount = convert_currency(amount, &curr, &usd).await?;
+    // Convert using USD-based rates to avoid asymmetry/rounding drift
+    let usd_amount = convert_to_usd(amount, &curr).await?;
     apply_transaction(&state.account, |bal| {
         *bal += usd_amount;
         Ok(())
@@ -28,9 +28,9 @@ async fn deposit(state: State<'_, AppState>, amount: f64, currency: String) -> R
 #[tauri::command]
 async fn withdraw(state: State<'_, AppState>, amount: f64, currency: String) -> Result<f64, String> {
     let curr = Currency::try_from(currency.as_str())?;
-    let usd = Currency::try_from("USD")?;
 
-    let usd_amount = convert_currency(amount, &curr, &usd).await?;
+    // Convert using USD-based rates to avoid asymmetry/rounding drift
+    let usd_amount = convert_to_usd(amount, &curr).await?;
     apply_transaction(&state.account, |bal| {
         if *bal >= usd_amount {
             *bal -= usd_amount;
@@ -65,12 +65,25 @@ async fn get_supported_currencies() -> Result<Vec<String>, String> {
     Ok(rates.keys().cloned().collect())
 }
 
+#[tauri::command]
+async fn convert_amount(amount: f64, from: String, to: String) -> Result<f64, String> {
+    let from_c = Currency::try_from(from.as_str())?;
+    let to_c = Currency::try_from(to.as_str())?;
+    convert_currency(amount, &from_c, &to_c).await
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(AppState {
             account: Arc::new(Mutex::new(Account::new(1000.0))),
         })
-        .invoke_handler(tauri::generate_handler![deposit, withdraw, get_balance, get_supported_currencies])
+        .invoke_handler(tauri::generate_handler![
+            deposit,
+            withdraw,
+            get_balance,
+            get_supported_currencies,
+            convert_amount
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
