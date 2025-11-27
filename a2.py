@@ -1,3 +1,4 @@
+
 import pygame
 from pygame.locals import *
 from OpenGL.GL import *
@@ -10,6 +11,30 @@ try:
     NUMBA_AVAILABLE = True
 except Exception:
     NUMBA_AVAILABLE = False
+
+# --- Numba gyorsított frissítés (opcionális) ---
+try:
+    from numba import njit, prange
+    @njit(parallel=True)
+    def _numba_update(active_slice, n, frame_scale, wind_x, wind_y, wind_z,
+                      target_x, target_z, mouse_attr, mode_sign):
+        for i in prange(n):
+            active_slice[i, 6] -= 0.012 * frame_scale
+            noise = ((i * 16807) % 1000) / 1000.0 - 0.5
+            nx = noise * 0.004 * frame_scale
+            active_slice[i, 0] += (active_slice[i, 3] + wind_x) * frame_scale + nx
+            active_slice[i, 1] += (active_slice[i, 4] + wind_y) * frame_scale
+            active_slice[i, 2] += (active_slice[i, 5] + wind_z) * frame_scale
+            if mouse_attr > 0.0:
+                dx = target_x - active_slice[i, 0]
+                dz = target_z - active_slice[i, 2]
+                active_slice[i, 0] += mode_sign * dx * mouse_attr * frame_scale
+                active_slice[i, 2] += mode_sign * dz * mouse_attr * frame_scale
+except Exception:
+    def _numba_update(active_slice, n, frame_scale, wind_x, wind_y, wind_z,
+                      target_x, target_z, mouse_attr, mode_sign):
+        # Dummy: nem csinál semmit, NumPy útvonal fut helyette
+        pass
 
 # --- KONFIGURÁCIÓ ---
 SCREEN_WIDTH = 1000
@@ -351,31 +376,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# --- Numba gyorsított frissítés (opcionális) ---
-if NUMBA_AVAILABLE:
-    @njit(parallel=True)
-    def _numba_update(active_slice, n, frame_scale, wind_x, wind_y, wind_z,
-                      target_x, target_z, mouse_attr, mode_sign):
-        # active_slice shape: (n, 13)
-        # fields: [x, y, z, vx, vy, vz, life, max_life, size, r, g, b, a]
-        for i in prange(n):
-            # Élettartam
-            active_slice[i, 6] -= 0.012 * frame_scale
-
-            # Turbulencia egyszerű helyettesítése: kis determinisztikus zaj (Numba nem támogat jól np.random)
-            # Hash-szerű zaj komponens a particle index alapján
-            noise = ((i * 16807) % 1000) / 1000.0 - 0.5  # [-0.5, 0.5)
-            nx = noise * 0.004 * frame_scale
-
-            # Mozgás + szél + zaj
-            active_slice[i, 0] += (active_slice[i, 3] + wind_x) * frame_scale + nx
-            active_slice[i, 1] += (active_slice[i, 4] + wind_y) * frame_scale
-            active_slice[i, 2] += (active_slice[i, 5] + wind_z) * frame_scale
-
-            # Interakció (vonzás/taszítás)
-            if mouse_attr > 0.0:
-                dx = target_x - active_slice[i, 0]
-                dz = target_z - active_slice[i, 2]
-                active_slice[i, 0] += mode_sign * dx * mouse_attr * frame_scale
-                active_slice[i, 2] += mode_sign * dz * mouse_attr * frame_scale
