@@ -117,19 +117,25 @@ class ParticleSystem:
         """
         if new_count == self.max_particles:
             return
-        
+
         old_count = self.max_particles
         old_particles = self.particles
-        
+
         # Új, üres tömb létrehozása
         self.particles = self._initialize_particles(new_count)
-        
+
         # Át másoljuk a régi, élő részecskéket
         copy_count = min(old_count, new_count)
         self.particles[:copy_count] = old_particles[:copy_count]
-        
+
         self.max_particles = new_count
         print(f"Resized particle system to {new_count} particles.")
+
+        # Azonnal töltsük fel az új helyeket aktív részecskékkel
+        dead_indices = np.where(self.particles[:self.max_particles, 6] <= 0)[0]
+        if len(dead_indices) > 0:
+            # Emit particles to fill all dead slots instantly
+            self.emit(0.1, len(dead_indices))
 
 
     def emit(self, dt, emission_rate):
@@ -150,18 +156,19 @@ class ParticleSystem:
             self.particles[idx, 1] = -1.5
             self.particles[idx, 2] = np.sin(angle) * radius
 
-            self.particles[idx, 3] = np.random.normal(0, 0.01, count)
-            self.particles[idx, 4] = np.random.uniform(0.08, 0.2, count)
-            self.particles[idx, 5] = np.random.normal(0, 0.01, count)
+            # Add more turbulence and vertical speed for fire effect
+            self.particles[idx, 3] = np.random.normal(0, 0.02, count)
+            self.particles[idx, 4] = np.random.uniform(0.15, 0.35, count)
+            self.particles[idx, 5] = np.random.normal(0, 0.02, count)
 
             self.particles[idx, 6] = 1.0
             self.particles[idx, 7] = 1.0
-            self.particles[idx, 8] = np.random.uniform(0.3, 0.6, count)
+            # More varied sizes for flicker
+            self.particles[idx, 8] = np.random.uniform(0.4, 0.8, count)
 
     def update(self, dt, mouse_ray=None, interaction_active=False, interaction_mode='attract', emission_rate=EMISSION_RATE):
-        # 1. Élettartam (csak az aktív részecskéken)
         active_slice = self.particles[:self.max_particles]
-        frame_scale = dt * 60.0  # 60 FPS-hez igazított skálázás (megtartja a jelenlegi tempót)
+        frame_scale = dt * 60.0  
         if NUMBA_AVAILABLE:
             target_x = mouse_ray[0] * 5 if (interaction_active and mouse_ray is not None) else 0.0
             target_z = mouse_ray[2] * 5 if (interaction_active and mouse_ray is not None) else 0.0
@@ -206,26 +213,29 @@ class ParticleSystem:
         right = np.array([modelview[0][0], modelview[1][0], modelview[2][0]])
         up =    np.array([modelview[0][1], modelview[1][1], modelview[2][1]])
         
-        # Csak a jelenleg aktív részecskéken iterálunk (a MAX_PARTICLES alapján)
         glBegin(GL_QUADS)
         for p in self.particles[:self.max_particles]: 
             life = p[6]
             if life <= 0: continue
-            
             pos = p[0:3]
-            size = p[8] * life 
-            
-            # Szín
-            if life > 0.5:
-                glColor4f(1.0, 0.9, 0.4, life)
+            size = p[8] * (life ** 0.7)  # Nonlinear fade for more firey look
+
+            # Vivid fire colors: yellow, orange, red
+            if life > 0.7:
+                # Bright yellow-white
+                glColor4f(1.0, 0.95, 0.4, min(1.0, life ** 1.5))
+            elif life > 0.4:
+                # Orange
+                glColor4f(1.0, 0.5 + 0.4 * life, 0.1, min(1.0, life ** 1.2))
             else:
-                glColor4f(0.8, 0.2, 0.0, life * 0.8)
+                # Red, fade out
+                glColor4f(0.8 * life, 0.1, 0.0, life ** 1.1 * 0.7)
 
             v1 = pos + (right * -size) + (up * -size)
             v2 = pos + (right * size) + (up * -size)
             v3 = pos + (right * size) + (up * size)
             v4 = pos + (right * -size) + (up * size)
-            
+
             glTexCoord2f(0, 0); glVertex3f(v1[0], v1[1], v1[2])
             glTexCoord2f(1, 0); glVertex3f(v2[0], v2[1], v2[2])
             glTexCoord2f(1, 1); glVertex3f(v3[0], v3[1], v3[2])
