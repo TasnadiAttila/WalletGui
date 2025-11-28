@@ -236,26 +236,23 @@ class ParticleSystem:
         glDepthMask(GL_TRUE)
         glDisable(GL_TEXTURE_2D)
 
-# --- FŐ PROGRAM ---
 
 def main():
     global MAX_PARTICLES, WIND_FORCE, EMISSION_RATE
     pygame.init()
-    display = (SCREEN_WIDTH, SCREEN_HEIGHT)
-    pygame.display.set_mode(display, DOUBLEBUF | OPENGL | RESIZABLE)
-    pygame.display.set_caption("Advanced Fire Simulation - Terhelés-szabályozás (Z/X)")
+    display = (800, 600)
+    pygame.display.set_mode(display, DOUBLEBUF | OPENGL)
 
     gluPerspective(45, (display[0] / display[1]), 0.1, 50.0)
     glTranslatef(0.0, 0.0, -8)
 
-    # Részecskerendszer létrehozása a kezdeti terheléssel
     system = ParticleSystem(INITIAL_PARTICLES)
     
     x_rot = 20
     y_rot = 0
     mouse_down = False
-    interaction_active = False # Jobb egérgomb interakció
-    interaction_mode = 'attract' # Kezdeti mód
+    interaction_active = False 
+    interaction_mode = 'attract'
     paused = False
     show_grid = True
     
@@ -271,15 +268,6 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit(); return
-            elif event.type == VIDEORESIZE:
-                display = (event.w, event.h)
-                pygame.display.set_mode(display, DOUBLEBUF | OPENGL | RESIZABLE)
-                glViewport(0, 0, display[0], display[1])
-                glMatrixMode(GL_PROJECTION)
-                glLoadIdentity()
-                gluPerspective(45, (display[0] / display[1]), 0.1, 50.0)
-                glMatrixMode(GL_MODELVIEW)
-            
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1: mouse_down = True
                 if event.button == 3: interaction_active = True
