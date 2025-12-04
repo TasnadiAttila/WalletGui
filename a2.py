@@ -6,35 +6,10 @@ from OpenGL.GLU import *
 import numpy as np
 import math
 import time
-try:
-    from numba import njit, prange
-    NUMBA_AVAILABLE = True
-except Exception:
-    NUMBA_AVAILABLE = False
-
-# --- Numba gyorsított frissítés (opcionális) ---
-try:
-    from numba import njit, prange
-    @njit(parallel=True)
-    def _numba_update(active_slice, n, frame_scale, wind_x, wind_y, wind_z,
-                      target_x, target_z, mouse_attr, mode_sign):
-        for i in prange(n):
-            active_slice[i, 6] -= 0.012 * frame_scale
-            noise = ((i * 16807) % 1000) / 1000.0 - 0.5
-            nx = noise * 0.004 * frame_scale
-            active_slice[i, 0] += (active_slice[i, 3] + wind_x) * frame_scale + nx
-            active_slice[i, 1] += (active_slice[i, 4] + wind_y) * frame_scale
-            active_slice[i, 2] += (active_slice[i, 5] + wind_z) * frame_scale
-            if mouse_attr > 0.0:
-                dx = target_x - active_slice[i, 0]
-                dz = target_z - active_slice[i, 2]
-                active_slice[i, 0] += mode_sign * dx * mouse_attr * frame_scale
-                active_slice[i, 2] += mode_sign * dz * mouse_attr * frame_scale
-except Exception:
-    def _numba_update(active_slice, n, frame_scale, wind_x, wind_y, wind_z,
-                      target_x, target_z, mouse_attr, mode_sign):
-        # Dummy: nem csinál semmit, NumPy útvonal fut helyette
-        pass
+import threading
+# Numba importok eltávolítva a Python 3.14 inkompatibilitás miatt
+# A kód tisztán NumPy-t fog használni
+NUMBA_AVAILABLE = False
 
 # --- KONFIGURÁCIÓ ---
 SCREEN_WIDTH = 1000
@@ -111,10 +86,6 @@ class ParticleSystem:
         return new_particles
 
     def resize_particles(self, new_count):
-        """
-        Terhelés-szabályozó: Átméretezi a részecsketömböt.
-        Ez a függvény lehetővé teszi a terhelés változtatását futás közben.
-        """
         if new_count == self.max_particles:
             return
 
@@ -166,82 +137,174 @@ class ParticleSystem:
             # More varied sizes for flicker
             self.particles[idx, 8] = np.random.uniform(0.4, 0.8, count)
 
+    def update_chunk(self, start, end, dt, frame_scale, wind_force, mouse_ray, interaction_active, interaction_mode):
+        """Egy részecske-csoport frissítése (külön szálon futtatható)"""
+        chunk = self.particles[start:end]
+        
+        # 1. Élettartam csökkentése
+        chunk[:, 6] -= 0.012 * frame_scale
+        
+        # 2. Fizika: Szél + Turbulencia
+        # Random generálás itt kicsit lassú lehet szálanként, de demonstrációnak jó
+        count = end - start
+        noise = np.random.normal(0, 0.002, count)
+        
+        chunk[:, 0] += (chunk[:, 3] + wind_force[0] + noise) * frame_scale
+        chunk[:, 1] += (chunk[:, 4] + wind_force[1]) * frame_scale
+        chunk[:, 2] += (chunk[:, 5] + wind_force[2]) * frame_scale
+        
+        # 3. INTERAKCIÓ
+        if interaction_active and mouse_ray is not None:
+            target_x = mouse_ray[0] * 5 
+            target_z = mouse_ray[2] * 5
+            
+            dx = target_x - chunk[:, 0]
+            dz = target_z - chunk[:, 2]
+            
+            if interaction_mode == 'attract':
+                chunk[:, 0] += dx * MOUSE_ATTRACTION * frame_scale
+                chunk[:, 2] += dz * MOUSE_ATTRACTION * frame_scale
+            else:
+                chunk[:, 0] -= dx * MOUSE_ATTRACTION * frame_scale
+                chunk[:, 2] -= dz * MOUSE_ATTRACTION * frame_scale
+
     def update(self, dt, mouse_ray=None, interaction_active=False, interaction_mode='attract', emission_rate=EMISSION_RATE):
-        active_slice = self.particles[:self.max_particles]
         frame_scale = dt * 60.0  
-        if NUMBA_AVAILABLE:
-            target_x = mouse_ray[0] * 5 if (interaction_active and mouse_ray is not None) else 0.0
-            target_z = mouse_ray[2] * 5 if (interaction_active and mouse_ray is not None) else 0.0
-            mode_sign = 1.0 if interaction_mode == 'attract' else -1.0
-            _numba_update(active_slice, self.max_particles, frame_scale, WIND_FORCE[0], WIND_FORCE[1], WIND_FORCE[2],
-                          target_x, target_z, MOUSE_ATTRACTION if interaction_active and mouse_ray is not None else 0.0,
-                          mode_sign)
-        else:
-            active_slice[:, 6] -= 0.012 * frame_scale
+        
+        # CPU PÁRHUZAMOSÍTÁS: Több szál indítása
+        num_threads = 4
+        chunk_size = self.max_particles // num_threads
+        threads = []
+        
+        for i in range(num_threads):
+            start = i * chunk_size
+            end = start + chunk_size if i < num_threads - 1 else self.max_particles
+            if start >= end: continue
             
-            # 2. Fizika: Szél + Turbulencia
-            active_slice[:, 0] += (active_slice[:, 3] + WIND_FORCE[0] + np.random.normal(0, 0.002, self.max_particles)) * frame_scale
-            active_slice[:, 1] += (active_slice[:, 4] + WIND_FORCE[1]) * frame_scale
-            active_slice[:, 2] += (active_slice[:, 5] + WIND_FORCE[2]) * frame_scale
+            t = threading.Thread(target=self.update_chunk, args=(
+                start, end, dt, frame_scale, WIND_FORCE, mouse_ray, interaction_active, interaction_mode
+            ))
+            threads.append(t)
+            t.start()
             
-            # 3. INTERAKCIÓ: Vonzás vagy Taszítás
-            if interaction_active and mouse_ray is not None:
-                
-                target_x = mouse_ray[0] * 5 
-                target_z = mouse_ray[2] * 5
-                
-                dx = target_x - active_slice[:, 0]
-                dz = target_z - active_slice[:, 2]
-                
-                if interaction_mode == 'attract':
-                    active_slice[:, 0] += dx * MOUSE_ATTRACTION * frame_scale
-                    active_slice[:, 2] += dz * MOUSE_ATTRACTION * frame_scale
-                else:
-                    active_slice[:, 0] -= dx * MOUSE_ATTRACTION * frame_scale
-                    active_slice[:, 2] -= dz * MOUSE_ATTRACTION * frame_scale
+        # Megvárjuk, amíg minden szál végez
+        for t in threads:
+            t.join()
 
         self.emit(dt, emission_rate)
 
     def draw(self):
+        # GPU PÁRHUZAMOSÍTÁS (Batch Rendering):
+        # Ahelyett, hogy egyesével küldenénk a pontokat (lassú),
+        # tömbökbe rendezzük őket és egyszerre küldjük át (gyors).
+        
         glEnable(GL_TEXTURE_2D)
         glBindTexture(GL_TEXTURE_2D, self.texture_id)
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE)
         glDepthMask(GL_FALSE)
 
+        # Csak az élő részecskékkel foglalkozunk
+        active_mask = self.particles[:self.max_particles, 6] > 0
+        count = np.count_nonzero(active_mask)
+        
+        if count == 0:
+            glDepthMask(GL_TRUE)
+            glDisable(GL_TEXTURE_2D)
+            return
+
+        # Szűrés
+        p_alive = self.particles[:self.max_particles][active_mask]
+        
+        # Adatok kinyerése
+        pos = p_alive[:, 0:3]
+        life = p_alive[:, 6]
+        size = p_alive[:, 8] * (life ** 0.7)
+        
+        # Billboard vektorok lekérése
         modelview = glGetDoublev(GL_MODELVIEW_MATRIX)
         right = np.array([modelview[0][0], modelview[1][0], modelview[2][0]])
         up =    np.array([modelview[0][1], modelview[1][1], modelview[2][1]])
         
-        glBegin(GL_QUADS)
-        for p in self.particles[:self.max_particles]: 
-            life = p[6]
-            if life <= 0: continue
-            pos = p[0:3]
-            size = p[8] * (life ** 0.7)  # Nonlinear fade for more firey look
-
-            # Vivid fire colors: yellow, orange, red
-            if life > 0.7:
-                # Bright yellow-white
-                glColor4f(1.0, 0.95, 0.4, min(1.0, life ** 1.5))
-            elif life > 0.4:
-                # Orange
-                glColor4f(1.0, 0.5 + 0.4 * life, 0.1, min(1.0, life ** 1.2))
-            else:
-                # Red, fade out
-                glColor4f(0.8 * life, 0.1, 0.0, life ** 1.1 * 0.7)
-
-            v1 = pos + (right * -size) + (up * -size)
-            v2 = pos + (right * size) + (up * -size)
-            v3 = pos + (right * size) + (up * size)
-            v4 = pos + (right * -size) + (up * size)
-
-            glTexCoord2f(0, 0); glVertex3f(v1[0], v1[1], v1[2])
-            glTexCoord2f(1, 0); glVertex3f(v2[0], v2[1], v2[2])
-            glTexCoord2f(1, 1); glVertex3f(v3[0], v3[1], v3[2])
-            glTexCoord2f(0, 1); glVertex3f(v4[0], v4[1], v4[2])
-
-        glEnd()
+        # Vektorizált csúcsszámítás (Minden részecskéhez 4 sarokpont)
+        right_vec = np.outer(size, right) # (N, 3)
+        up_vec = np.outer(size, up)       # (N, 3)
+        
+        # v1 = pos - right - up
+        # v2 = pos + right - up
+        # v3 = pos + right + up
+        # v4 = pos - right + up
+        v1 = pos - right_vec - up_vec
+        v2 = pos + right_vec - up_vec
+        v3 = pos + right_vec + up_vec
+        v4 = pos - right_vec + up_vec
+        
+        # Összefűzés egyetlen tömbbe a kirajzoláshoz
+        vertices = np.empty((count, 4, 3), dtype=np.float32)
+        vertices[:, 0] = v1
+        vertices[:, 1] = v2
+        vertices[:, 2] = v3
+        vertices[:, 3] = v4
+        vertices = vertices.reshape(-1, 3) # (N*4, 3)
+        
+        # Textúra koordináták (N*4, 2)
+        tex_coords = np.tile(np.array([
+            [0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]
+        ], dtype=np.float32), (count, 1))
+        
+        # Színek számítása (vektorizálva)
+        colors = np.zeros((count, 4), dtype=np.float32)
+        
+        # Sárga
+        mask1 = life > 0.7
+        if np.any(mask1):
+            l = life[mask1]
+            colors[mask1] = np.column_stack((
+                np.ones_like(l), 
+                np.full_like(l, 0.95), 
+                np.full_like(l, 0.4), 
+                np.minimum(1.0, l ** 1.5)
+            ))
+            
+        # Narancs
+        mask2 = (life > 0.4) & (life <= 0.7)
+        if np.any(mask2):
+            l = life[mask2]
+            colors[mask2] = np.column_stack((
+                np.ones_like(l), 
+                0.5 + 0.4 * l, 
+                np.full_like(l, 0.1), 
+                np.minimum(1.0, l ** 1.2)
+            ))
+            
+        # Piros
+        mask3 = life <= 0.4
+        if np.any(mask3):
+            l = life[mask3]
+            colors[mask3] = np.column_stack((
+                0.8 * l, 
+                np.full_like(l, 0.1), 
+                np.zeros_like(l), 
+                (l ** 1.1) * 0.7
+            ))
+            
+        # Színek ismétlése 4x minden csúcshoz
+        colors_expanded = np.repeat(colors, 4, axis=0)
+        
+        # Kirajzolás Vertex Array-el (Párhuzamos adatátvitel)
+        glEnableClientState(GL_VERTEX_ARRAY)
+        glEnableClientState(GL_TEXTURE_COORD_ARRAY)
+        glEnableClientState(GL_COLOR_ARRAY)
+        
+        glVertexPointer(3, GL_FLOAT, 0, vertices)
+        glTexCoordPointer(2, GL_FLOAT, 0, tex_coords)
+        glColorPointer(4, GL_FLOAT, 0, colors_expanded)
+        
+        glDrawArrays(GL_QUADS, 0, count * 4)
+        
+        glDisableClientState(GL_VERTEX_ARRAY)
+        glDisableClientState(GL_TEXTURE_COORD_ARRAY)
+        glDisableClientState(GL_COLOR_ARRAY)
         
         glDepthMask(GL_TRUE)
         glDisable(GL_TEXTURE_2D)
